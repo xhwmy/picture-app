@@ -27,16 +27,18 @@ interface ImageItem {
   errorReason?: string;
 }
 
-const FORMATS: { value: OutputFormat; label: string }[] = [
+const FORMATS: { value: Exclude<OutputFormat, 'auto'>; label: string }[] = [
   { value: 'webp', label: 'WebP' },
   { value: 'jpeg', label: 'JPEG' },
   { value: 'avif', label: 'AVIF' },
   { value: 'png', label: 'PNG' },
 ];
 
-function formatKB(bytes: number): string {
+function formatSize(bytes: number): string {
   if (bytes < 1024) return bytes + ' B';
-  return (bytes / 1024).toFixed(1) + ' KB';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+  return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
 }
 
 function extFromMime(mime: string): string {
@@ -49,14 +51,16 @@ function extFromMime(mime: string): string {
 
 export function App() {
   const [images, setImages] = useState<ImageItem[]>([]);
-  const [format, setFormat] = useState<OutputFormat>('webp');
+  const [format, setFormat] = useState<OutputFormat | null>(null);
   const [quality, setQuality] = useState(75);
   const [visuallyLossless, setVisuallyLossless] = useState(false);
   const [perceptualLevel, setPerceptualLevel] = useState<PerceptualLevel>('normal');
   const [processing, setProcessing] = useState(false);
+  const [compressProgress, setCompressProgress] = useState(0);
   const [replacing, setReplacing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const workerPoolRef = useRef<Worker[]>([]);
+  const cancelRef = useRef(false);
 
   useEffect(() => {
     const count = Math.min(4, Math.max(2, (navigator.hardwareConcurrency || 4)));
@@ -129,53 +133,83 @@ export function App() {
     const pool = workerPoolRef.current;
     if (pool.length === 0 || images.length === 0) return;
     setProcessing(true);
+    setCompressProgress(0);
+    cancelRef.current = false;
 
     const pending = images.filter((img) => img.status === 'pending' || img.status === 'failed');
-    await Promise.all(pending.map((item, idx) => (async () => {
-      setImages((prev) => prev.map((img) => (img.id === item.id ? { ...img, status: 'processing' } : img)));
-      try {
-        const buffer = item.data.slice(0);
-        const request: WorkerRequest = {
-          type: visuallyLossless ? 'visuallyLossless' : 'compress',
-          id: item.id,
-          buffer,
-          mimeType: item.mimeType,
-          format,
-          quality,
-          perceptualLevel: visuallyLossless ? perceptualLevel : undefined,
-        };
-        const result = await new Promise<CompressOutput>((resolve, reject) => {
-          const worker = pool[idx % pool.length];
-          const handler = (e: MessageEvent<WorkerResponse>) => {
-            const msg = e.data;
-            if (msg.id !== item.id) return;
-            worker.removeEventListener('message', handler);
-            if (msg.type === 'success') resolve(msg.result);
-            else reject(new Error(msg.error));
+    const total = pending.length;
+    let completed = 0;
+    let taskIndex = 0;
+
+    const runWorker = async (worker: Worker) => {
+      while (taskIndex < pending.length && !cancelRef.current) {
+        const myIndex = taskIndex++;
+        const item = pending[myIndex];
+        setImages((prev) => prev.map((img) => (img.id === item.id ? { ...img, status: 'processing' } : img)));
+        try {
+          const buffer = item.data.slice(0);
+          const request: WorkerRequest = {
+            type: visuallyLossless ? 'visuallyLossless' : 'compress',
+            id: item.id,
+            buffer,
+            mimeType: item.mimeType,
+            format: format ?? 'auto',
+            quality,
+            perceptualLevel: visuallyLossless ? perceptualLevel : undefined,
           };
-          worker.addEventListener('message', handler);
-          worker.postMessage(request, { transfer: [buffer] });
-        });
-        const resultUrl = URL.createObjectURL(new Blob([result.buffer], { type: result.mimeType }));
-        setImages((prev) =>
-          prev.map((img) => (img.id === item.id ? { ...img, status: 'done', result, resultUrl } : img)),
-        );
-      } catch (err) {
-        setImages((prev) =>
-          prev.map((img) =>
-            img.id === item.id ? { ...img, status: 'failed', errorReason: err instanceof Error ? err.message : String(err) } : img,
-          ),
-        );
+          const result = await new Promise<CompressOutput>((resolve, reject) => {
+            const handler = (e: MessageEvent<WorkerResponse>) => {
+              const msg = e.data;
+              if (msg.id !== item.id) return;
+              worker.removeEventListener('message', handler);
+              if (msg.type === 'success') resolve(msg.result);
+              else reject(new Error(msg.error));
+            };
+            worker.addEventListener('message', handler);
+            worker.postMessage(request, { transfer: [buffer] });
+          });
+          if (cancelRef.current) break;
+          const resultUrl = URL.createObjectURL(new Blob([result.buffer], { type: result.mimeType }));
+          setImages((prev) =>
+            prev.map((img) => (img.id === item.id ? { ...img, status: 'done', result, resultUrl } : img)),
+          );
+        } catch (err) {
+          if (cancelRef.current) break;
+          setImages((prev) =>
+            prev.map((img) =>
+              img.id === item.id ? { ...img, status: 'failed', errorReason: err instanceof Error ? err.message : String(err) } : img,
+            ),
+          );
+        }
+        completed++;
+        setCompressProgress(Math.round((completed / total) * 100));
       }
-    })()));
+    };
+
+    await Promise.all(pool.map((w) => runWorker(w)));
+    if (cancelRef.current) {
+      setImages((prev) => prev.map((img) => img.status === 'processing' ? { ...img, status: 'pending' } : img));
+    }
     setProcessing(false);
+    setCompressProgress(0);
   }, [images, format, quality, visuallyLossless, perceptualLevel]);
+
+  const cancelCompress = useCallback(() => {
+    cancelRef.current = true;
+    workerPoolRef.current.forEach((w) => w.terminate());
+    const count = Math.min(4, Math.max(2, (navigator.hardwareConcurrency || 4)));
+    const pool: Worker[] = [];
+    for (let i = 0; i < count; i++) {
+      pool.push(new Worker(new URL('./workers/compress.worker.ts', import.meta.url), { type: 'module' }));
+    }
+    workerPoolRef.current = pool;
+  }, []);
 
   const native = isNative();
 
   const replaceOriginal = useCallback(async (item: ImageItem) => {
     if (!item.result) return;
-    if (isNative() && !confirm('替换原图需要授权覆盖写入，接下来系统会弹出授权对话框，请点击"允许"。')) {
+    if (isNative() && !confirm('替换原图需要授权覆盖写入，接下来系统会弹出授权对话框，请点"允许"')) {
       return;
     }
     try {
@@ -248,7 +282,7 @@ export function App() {
     <div class="app">
       <div class="header">
         <h1>图片压缩</h1>
-        {images.length > 0 && <span class="header__count">{images.length} 张{doneCount > 0 && ` · 省 ${formatKB(totalSaved)}`}</span>}
+        {images.length > 0 && <span class="header__count">{images.length} 张{doneCount > 0 && ` · 省 ${formatSize(totalSaved)}`}</span>}
       </div>
 
       {images.length === 0 ? (
@@ -260,12 +294,12 @@ export function App() {
         <>
           <div class="settings">
             <div class="settings__row">
-              <span class="settings__label">格式</span>
+              <span class="settings__label">格式 <span class="settings__value">{format === null ? '原格式' : ''}</span></span>
               <div class="segmented">
                 {FORMATS.map((f) => (
                   <button
                     class={`segmented__btn${format === f.value ? ' segmented__btn--active' : ''}`}
-                    onClick={() => setFormat(f.value)}
+                    onClick={() => setFormat(format === f.value ? null : f.value)}
                   >{f.label}</button>
                 ))}
               </div>
@@ -306,8 +340,8 @@ export function App() {
                 <div class="image-item__info">
                   <div class="image-item__name">{item.name}</div>
                   <div class="image-item__sizes">
-                    {formatKB(item.originalSize)}
-                    {item.result && <> <span class="image-item__arrow">→</span> {formatKB(item.result.byteLength)}（省 {Math.round((1 - item.result.byteLength / item.originalSize) * 100)}%）</>}
+                    {formatSize(item.originalSize)}
+                    {item.result && <> <span class="image-item__arrow">→</span> {formatSize(item.result.byteLength)}（省 {Math.round((1 - item.result.byteLength / item.originalSize) * 100)}%）</>}
                     {item.result && <span class="image-item__sizes"> · Q{item.result.qualityUsed}</span>}
                   </div>
                 </div>
@@ -327,9 +361,20 @@ export function App() {
             ))}
           </div>
 
+          {processing && (
+            <div class="progress-bar">
+              <div class="progress-bar__fill" style={`width:${compressProgress}%`}></div>
+              <span class="progress-bar__text">{compressProgress}%</span>
+            </div>
+          )}
+
           <div class="actions">
-            <button class="actions__btn actions__compress" disabled={processing || images.every((i) => i.status === 'done')}
-              onClick={compress}>{processing ? '压缩中...' : '开始压缩'}</button>
+            {processing ? (
+              <button class="actions__btn" style="background:#da3633;color:#fff;" onClick={cancelCompress}>中断压缩</button>
+            ) : (
+              <button class="actions__btn actions__compress" disabled={images.every((i) => i.status === 'done')}
+                onClick={compress}>开始压缩</button>
+            )}
             {doneCount > 0 && images.some((i) => i.status === 'done' && !i.replaced) && (
               <button class="actions__btn" disabled={replacing}
                 style="background:#1f6feb;color:#fff;"

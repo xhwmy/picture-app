@@ -225,16 +225,18 @@ function autoFormatFromInput(format: InputFormat): Exclude<OutputFormat, 'auto'>
   switch (format) {
     case 'jpeg':
       return 'jpeg';
-    case 'gif':
-      return 'webp';
     case 'avif':
       return 'avif';
     case 'png':
+      return 'png';
     case 'webp':
+      return 'webp';
+    case 'gif':
+      return 'webp';
     case 'heic':
     case 'unknown':
     default:
-      return 'webp';
+      return 'jpeg';
   }
 }
 
