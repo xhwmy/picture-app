@@ -78,6 +78,20 @@ picture-app/
 - `change:` 配置/流程变更
 - `add:` 新增文件或配置
 
+### 版本号规则（必须遵守）
+
+- **功能更新 / 性能优化** → minor 版本：1.6 → 1.7（`build-apk.ps1 -minor`）
+- **Bug 修复** → patch 版本：1.6.1 → 1.6.2（`build-apk.ps1` 默认）
+- **重大变更** → major 版本：1.x → 2.0（`build-apk.ps1 -major`）
+- `versionCode` 始终 +1，`versionName` 按上述规则递增
+
+### 自动提交规则（必须遵守）
+
+- **每次代码改动完成后自动提交到 GitHub**，不需要用户提醒
+- 按版本号规则更新版本号（功能更新用 `-minor`，bug 修复用默认 patch）
+- 遵循 dev → master 推送流程
+- 提交前确认 vite build 通过
+
 ### 注意事项
 
 - **禁止 amend + force push**（会导致 master/dev 历史分叉）

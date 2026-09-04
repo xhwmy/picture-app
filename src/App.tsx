@@ -63,7 +63,7 @@ export function App() {
   const cancelRef = useRef(false);
 
   useEffect(() => {
-    const count = Math.min(4, Math.max(2, (navigator.hardwareConcurrency || 4)));
+    const count = Math.min(6, Math.max(2, (navigator.hardwareConcurrency || 4)));
     const pool: Worker[] = [];
     for (let i = 0; i < count; i++) {
       pool.push(new Worker(new URL('./workers/compress.worker.ts', import.meta.url), { type: 'module' }));
@@ -197,7 +197,7 @@ export function App() {
   const cancelCompress = useCallback(() => {
     cancelRef.current = true;
     workerPoolRef.current.forEach((w) => w.terminate());
-    const count = Math.min(4, Math.max(2, (navigator.hardwareConcurrency || 4)));
+    const count = Math.min(6, Math.max(2, (navigator.hardwareConcurrency || 4)));
     const pool: Worker[] = [];
     for (let i = 0; i < count; i++) {
       pool.push(new Worker(new URL('./workers/compress.worker.ts', import.meta.url), { type: 'module' }));
