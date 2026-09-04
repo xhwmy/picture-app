@@ -158,7 +158,76 @@ public class PicturePlugin extends Plugin {
             } catch (SecurityException ignored) {
             }
 
+            String name = queryDisplayName(uri, resolver);
+            String mimeType = resolver.getType(uri);
+            long size = querySize(uri, resolver);
+            String mediaStoreUri = findMediaStoreUri(uri, name, (int) size);
+
+            String thumbBase64 = generateThumbnailBase64(uri, resolver);
+
+            JSObject img = new JSObject();
+            img.put("id", uri.toString());
+            img.put("contentUri", mediaStoreUri != null ? mediaStoreUri : uri.toString());
+            img.put("name", name);
+            img.put("size", size);
+            img.put("mimeType", mimeType != null ? mimeType : "image/jpeg");
+            img.put("thumbnailBase64", thumbBase64);
+            return img;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private long querySize(Uri uri, ContentResolver resolver) {
+        try (Cursor cursor = resolver.query(uri, null, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int sizeIdx = cursor.getColumnIndex(OpenableColumns.SIZE);
+                if (sizeIdx >= 0) return cursor.getLong(sizeIdx);
+            }
+        } catch (Exception ignored) {
+        }
+        return 0;
+    }
+
+    private String generateThumbnailBase64(Uri uri, ContentResolver resolver) {
+        try {
+            android.graphics.BitmapFactory.Options opts = new android.graphics.BitmapFactory.Options();
+            opts.inJustDecodeBounds = true;
             InputStream is = resolver.openInputStream(uri);
+            android.graphics.BitmapFactory.decodeStream(is, null, opts);
+            is.close();
+
+            int sampleSize = 1;
+            while (opts.outWidth / sampleSize > 200 || opts.outHeight / sampleSize > 200) {
+                sampleSize *= 2;
+            }
+
+            opts.inJustDecodeBounds = false;
+            opts.inSampleSize = sampleSize;
+            is = resolver.openInputStream(uri);
+            android.graphics.Bitmap bmp = android.graphics.BitmapFactory.decodeStream(is, null, opts);
+            is.close();
+            if (bmp == null) return "";
+
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 70, baos);
+            bmp.recycle();
+            return Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP);
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    @PluginMethod
+    public void readImage(PluginCall call) {
+        String contentUriStr = call.getString("contentUri");
+        if (contentUriStr == null) {
+            call.reject("Missing contentUri");
+            return;
+        }
+        try {
+            Uri uri = Uri.parse(contentUriStr);
+            InputStream is = getContext().getContentResolver().openInputStream(uri);
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             byte[] buffer = new byte[8192];
             int len;
@@ -166,23 +235,12 @@ public class PicturePlugin extends Plugin {
                 baos.write(buffer, 0, len);
             }
             is.close();
-
-            byte[] data = baos.toByteArray();
-            String base64 = Base64.encodeToString(data, Base64.NO_WRAP);
-            String name = queryDisplayName(uri, resolver);
-            String mimeType = resolver.getType(uri);
-            String mediaStoreUri = findMediaStoreUri(uri, name, data.length);
-
-            JSObject img = new JSObject();
-            img.put("id", uri.toString());
-            img.put("contentUri", mediaStoreUri != null ? mediaStoreUri : uri.toString());
-            img.put("name", name);
-            img.put("size", data.length);
-            img.put("mimeType", mimeType != null ? mimeType : "image/jpeg");
-            img.put("base64", base64);
-            return img;
+            String base64 = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP);
+            JSObject ret = new JSObject();
+            ret.put("base64", base64);
+            call.resolve(ret);
         } catch (Exception e) {
-            return null;
+            call.reject("Read failed: " + e.getMessage());
         }
     }
 

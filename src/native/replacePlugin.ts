@@ -6,7 +6,7 @@ export interface PickedImage {
   name: string;
   size: number;
   mimeType: string;
-  base64: string;
+  thumbnailBase64: string;
 }
 
 export interface ReplaceImageOptions {
@@ -25,6 +25,7 @@ export interface PicturePlugin {
   requestPermissions(): Promise<void>;
   requestWritePermissions(options: { uris: string[] }): Promise<void>;
   pickImages(): Promise<{ images: PickedImage[] }>;
+  readImage(options: { contentUri: string }): Promise<{ base64: string }>;
   replaceImage(options: ReplaceImageOptions): Promise<void>;
   saveImage(options: SaveImageOptions): Promise<void>;
 }
@@ -69,6 +70,11 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
 export async function pickImagesNative(): Promise<PickedImage[]> {
   const result = await Picture.pickImages();
   return result.images;
+}
+
+export async function readImageNative(contentUri: string): Promise<ArrayBuffer> {
+  const result = await Picture.readImage({ contentUri });
+  return base64ToArrayBuffer(result.base64);
 }
 
 export async function replaceImageNative(

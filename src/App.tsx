@@ -3,6 +3,7 @@ import type { CompressOutput, WorkerRequest, WorkerResponse, OutputFormat, Perce
 import {
   isNative,
   pickImagesNative,
+  readImageNative,
   replaceImageNative,
   saveImageNative,
   downloadBlob,
@@ -19,7 +20,7 @@ interface ImageItem {
   mimeType: string;
   thumbnailUrl: string;
   contentUri?: string;
-  data: ArrayBuffer;
+  data?: ArrayBuffer;
   status: 'pending' | 'processing' | 'done' | 'failed';
   result?: CompressOutput;
   resultUrl?: string;
@@ -99,16 +100,15 @@ export function App() {
 
   const addFromNative = useCallback((picked: PickedImage[]) => {
     const items: ImageItem[] = picked.map((p) => {
-      const data = base64ToArrayBuffer(p.base64);
-      const blob = new Blob([data], { type: p.mimeType });
+      const thumbData = base64ToArrayBuffer(p.thumbnailBase64);
+      const thumbBlob = new Blob([thumbData], { type: 'image/jpeg' });
       return {
         id: p.id,
         name: p.name,
         originalSize: p.size,
         mimeType: p.mimeType,
-        thumbnailUrl: URL.createObjectURL(blob),
+        thumbnailUrl: URL.createObjectURL(thumbBlob),
         contentUri: p.contentUri,
-        data,
         status: 'pending' as const,
         replaced: false,
       };
@@ -154,7 +154,14 @@ export function App() {
         updateProgress();
         setImages((prev) => prev.map((img) => (img.id === item.id ? { ...img, status: 'processing' } : img)));
         try {
-          const buffer = item.data.slice(0);
+          let buffer: ArrayBuffer;
+          if (item.data) {
+            buffer = item.data.slice(0);
+          } else if (item.contentUri) {
+            buffer = await readImageNative(item.contentUri);
+          } else {
+            throw new Error('No image data');
+          }
           const request: WorkerRequest = {
             type: visuallyLossless ? 'visuallyLossless' : 'compress',
             id: item.id,
