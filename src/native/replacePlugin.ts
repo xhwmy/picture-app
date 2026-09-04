@@ -23,6 +23,7 @@ export interface SaveImageOptions {
 
 export interface PicturePlugin {
   requestPermissions(): Promise<void>;
+  requestWritePermissions(options: { uris: string[] }): Promise<void>;
   pickImages(): Promise<{ images: PickedImage[] }>;
   replaceImage(options: ReplaceImageOptions): Promise<void>;
   saveImage(options: SaveImageOptions): Promise<void>;
@@ -37,6 +38,12 @@ export function isNative(): boolean {
 export async function requestPermissions(): Promise<void> {
   if (isNative()) {
     await Picture.requestPermissions();
+  }
+}
+
+export async function requestWritePermissions(uris: string[]): Promise<void> {
+  if (isNative() && uris.length > 0) {
+    await Picture.requestWritePermissions({ uris });
   }
 }
 

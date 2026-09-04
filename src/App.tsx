@@ -8,6 +8,7 @@ import {
   downloadBlob,
   base64ToArrayBuffer,
   requestPermissions,
+  requestWritePermissions,
   type PickedImage,
 } from './native/replacePlugin';
 
@@ -55,13 +56,17 @@ export function App() {
   const [processing, setProcessing] = useState(false);
   const [replacing, setReplacing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const workerRef = useRef<Worker | null>(null);
+  const workerPoolRef = useRef<Worker[]>([]);
 
   useEffect(() => {
-    const worker = new Worker(new URL('./workers/compress.worker.ts', import.meta.url), { type: 'module' });
-    workerRef.current = worker;
+    const count = Math.min(4, Math.max(2, (navigator.hardwareConcurrency || 4)));
+    const pool: Worker[] = [];
+    for (let i = 0; i < count; i++) {
+      pool.push(new Worker(new URL('./workers/compress.worker.ts', import.meta.url), { type: 'module' }));
+    }
+    workerPoolRef.current = pool;
     requestPermissions().catch(() => {});
-    return () => worker.terminate();
+    return () => pool.forEach((w) => w.terminate());
   }, []);
 
   const addFromFiles = useCallback((files: FileList | null) => {
@@ -121,11 +126,12 @@ export function App() {
   }, [addFromNative]);
 
   const compress = useCallback(async () => {
-    if (!workerRef.current || images.length === 0) return;
+    const pool = workerPoolRef.current;
+    if (pool.length === 0 || images.length === 0) return;
     setProcessing(true);
 
     const pending = images.filter((img) => img.status === 'pending' || img.status === 'failed');
-    for (const item of pending) {
+    await Promise.all(pending.map((item, idx) => (async () => {
       setImages((prev) => prev.map((img) => (img.id === item.id ? { ...img, status: 'processing' } : img)));
       try {
         const buffer = item.data.slice(0);
@@ -139,7 +145,7 @@ export function App() {
           perceptualLevel: visuallyLossless ? perceptualLevel : undefined,
         };
         const result = await new Promise<CompressOutput>((resolve, reject) => {
-          const worker = workerRef.current!;
+          const worker = pool[idx % pool.length];
           const handler = (e: MessageEvent<WorkerResponse>) => {
             const msg = e.data;
             if (msg.id !== item.id) return;
@@ -161,7 +167,7 @@ export function App() {
           ),
         );
       }
-    }
+    })()));
     setProcessing(false);
   }, [images, format, quality, visuallyLossless, perceptualLevel]);
 
@@ -190,8 +196,16 @@ export function App() {
       (img) => img.status === 'done' && !img.replaced && img.result && (native ? img.contentUri : true),
     );
     if (toReplace.length === 0) return;
-    if (native && !confirm(`将替换 ${toReplace.length} 张原图，首次会弹出授权对话框，请点击"允许"。`)) {
-      return;
+    if (native) {
+      if (!confirm(`将替换 ${toReplace.length} 张原图，接下来只弹出一次授权对话框，请点击"允许"。`)) {
+        return;
+      }
+      try {
+        await requestWritePermissions(toReplace.map((img) => img.contentUri!));
+      } catch (err) {
+        alert('授权失败，无法替换原图: ' + (err instanceof Error ? err.message : String(err)));
+        return;
+      }
     }
     setReplacing(true);
     let failed = 0;

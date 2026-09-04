@@ -46,6 +46,51 @@ public class PicturePlugin extends Plugin {
     private PluginCall pendingReplaceCall;
     private Uri pendingReplaceUri;
     private byte[] pendingReplaceData;
+    private PluginCall pendingBatchCall;
+
+    @PluginMethod
+    public void requestWritePermissions(PluginCall call) {
+        JSArray urisArr = call.getArray("uris");
+        if (urisArr == null || urisArr.length() == 0) {
+            call.resolve();
+            return;
+        }
+        java.util.List<Uri> uris = new java.util.ArrayList<>();
+        for (int i = 0; i < urisArr.length(); i++) {
+            try {
+                String s = urisArr.getString(i);
+                if (s != null) uris.add(Uri.parse(s));
+            } catch (Exception ignored) {
+            }
+        }
+        if (uris.isEmpty()) {
+            call.resolve();
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                PendingIntent pi = MediaStore.createWriteRequest(
+                    getContext().getContentResolver(), uris
+                );
+                pendingBatchCall = call;
+                pi.send(0,
+                    new PendingIntent.OnFinished() {
+                        @Override
+                        public void onSendFinished(PendingIntent pi, Intent intent,
+                                                   int resultCode, String resultData,
+                                                   Bundle resultExtras) {
+                            pendingBatchCall.resolve();
+                        }
+                    }, new Handler(Looper.getMainLooper()));
+            } catch (PendingIntent.CanceledException ex) {
+                call.reject("Permission request canceled");
+            } catch (Exception ex) {
+                call.reject("Failed to request write permissions: " + ex.getMessage());
+            }
+        } else {
+            call.resolve();
+        }
+    }
 
     @PluginMethod
     public void requestPermissions(PluginCall call) {
