@@ -165,6 +165,8 @@ export function App() {
     setProcessing(false);
   }, [images, format, quality, visuallyLossless, perceptualLevel]);
 
+  const native = isNative();
+
   const replaceOriginal = useCallback(async (item: ImageItem) => {
     if (!item.result) return;
     if (isNative() && !confirm('替换原图需要授权覆盖写入，接下来系统会弹出授权对话框，请点击"允许"。')) {
@@ -226,7 +228,7 @@ export function App() {
 
   const doneCount = images.filter((i) => i.status === 'done').length;
   const totalSaved = images.reduce((sum, i) => sum + (i.result ? i.originalSize - i.result.byteLength : 0), 0);
-  const native = isNative();
+
 
   return (
     <div class="app">

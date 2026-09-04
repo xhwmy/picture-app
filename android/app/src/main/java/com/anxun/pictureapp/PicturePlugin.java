@@ -211,49 +211,33 @@ public class PicturePlugin extends Plugin {
             return;
         }
 
-        try {
-            Uri uri = Uri.parse(contentUriStr);
-            byte[] data = Base64.decode(base64Str, Base64.NO_WRAP);
+        Uri uri = Uri.parse(contentUriStr);
+        byte[] data = Base64.decode(base64Str, Base64.NO_WRAP);
 
-            OutputStream os = getContext().getContentResolver().openOutputStream(uri, "wt");
-            if (os == null) {
-                call.reject("Cannot open output stream");
-                return;
-            }
-            os.write(data);
-            os.flush();
-            os.close();
+        try {
+            writeData(uri, data);
             call.resolve();
         } catch (RecoverableSecurityException e) {
             pendingReplaceCall = call;
-            pendingReplaceUri = Uri.parse(contentUriStr);
-            pendingReplaceData = Base64.decode(base64Str, Base64.NO_WRAP);
+            pendingReplaceUri = uri;
+            pendingReplaceData = data;
             try {
-                e.getUserAction().getActionIntent().send(0,
+                PendingIntent pi;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    pi = MediaStore.createWriteRequest(
+                        getContext().getContentResolver(),
+                        java.util.Collections.singletonList(uri)
+                    );
+                } else {
+                    pi = e.getUserAction().getActionIntent();
+                }
+                pi.send(0,
                     new PendingIntent.OnFinished() {
                         @Override
                         public void onSendFinished(PendingIntent pi, Intent intent,
                                                    int resultCode, String resultData,
                                                    Bundle resultExtras) {
-                            new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
-                                @Override
-                                public void run() {
-                                    try {
-                                        OutputStream os2 = getContext().getContentResolver()
-                                            .openOutputStream(pendingReplaceUri, "wt");
-                                        if (os2 == null) {
-                                            pendingReplaceCall.reject("Cannot open output stream after permission");
-                                            return;
-                                        }
-                                        os2.write(pendingReplaceData);
-                                        os2.flush();
-                                        os2.close();
-                                        pendingReplaceCall.resolve();
-                                    } catch (Exception ex) {
-                                        pendingReplaceCall.reject("Replace failed after permission: " + ex.getMessage());
-                                    }
-                                }
-                            }, 500);
+                            retryWrite(0);
                         }
                     }, new Handler(Looper.getMainLooper()));
             } catch (PendingIntent.CanceledException ex) {
@@ -262,6 +246,34 @@ public class PicturePlugin extends Plugin {
         } catch (Exception e) {
             call.reject("Replace failed: " + e.getMessage());
         }
+    }
+
+    private void writeData(Uri uri, byte[] data) throws Exception {
+        OutputStream os = getContext().getContentResolver().openOutputStream(uri, "wt");
+        if (os == null) {
+            throw new Exception("Cannot open output stream");
+        }
+        os.write(data);
+        os.flush();
+        os.close();
+    }
+
+    private void retryWrite(final int attempt) {
+        if (attempt >= 3) {
+            pendingReplaceCall.reject("授权后仍无法写入。请到系统设置 → 应用管理 → 图片压缩 → 权限，开启存储权限后重试");
+            return;
+        }
+        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    writeData(pendingReplaceUri, pendingReplaceData);
+                    pendingReplaceCall.resolve();
+                } catch (Exception ex) {
+                    retryWrite(attempt + 1);
+                }
+            }
+        }, 600);
     }
 
     @PluginMethod
