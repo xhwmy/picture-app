@@ -53,6 +53,7 @@ export function App() {
   const [visuallyLossless, setVisuallyLossless] = useState(false);
   const [perceptualLevel, setPerceptualLevel] = useState<PerceptualLevel>('normal');
   const [processing, setProcessing] = useState(false);
+  const [replacing, setReplacing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const workerRef = useRef<Worker | null>(null);
 
@@ -181,6 +182,33 @@ export function App() {
     }
   }, []);
 
+
+  const replaceAll = useCallback(async () => {
+    const toReplace = images.filter(
+      (img) => img.status === 'done' && !img.replaced && img.result && (native ? img.contentUri : true),
+    );
+    if (toReplace.length === 0) return;
+    if (native && !confirm(`将替换 ${toReplace.length} 张原图，首次会弹出授权对话框，请点击"允许"。`)) {
+      return;
+    }
+    setReplacing(true);
+    let failed = 0;
+    for (const item of toReplace) {
+      try {
+        if (native && item.contentUri) {
+          await replaceImageNative(item.contentUri, item.result!.buffer, item.result!.mimeType);
+        } else {
+          downloadBlob(item.result!.buffer, item.result!.mimeType, 'compressed-' + item.name);
+        }
+        setImages((prev) => prev.map((img) => (img.id === item.id ? { ...img, replaced: true } : img)));
+      } catch {
+        failed++;
+      }
+    }
+    setReplacing(false);
+    if (failed > 0) alert(`${toReplace.length - failed} 张替换成功，${failed} 张失败`);
+  }, [images, native]);
+
   const saveToGallery = useCallback(async (item: ImageItem) => {
     if (!item.result) return;
     try {
@@ -286,6 +314,11 @@ export function App() {
           <div class="actions">
             <button class="actions__btn actions__compress" disabled={processing || images.every((i) => i.status === 'done')}
               onClick={compress}>{processing ? '压缩中...' : '开始压缩'}</button>
+            {doneCount > 0 && images.some((i) => i.status === 'done' && !i.replaced) && (
+              <button class="actions__btn" disabled={replacing}
+                style="background:#1f6feb;color:#fff;"
+                onClick={replaceAll}>{replacing ? '替换中...' : `一键替换（${images.filter((i) => i.status === 'done' && !i.replaced).length}张）`}</button>
+            )}
             <button class="picker__btn" style="padding: 14px 20px;" onClick={handlePick}>+ 添加</button>
           </div>
         </>

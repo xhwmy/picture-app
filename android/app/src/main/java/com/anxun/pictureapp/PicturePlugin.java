@@ -235,24 +235,25 @@ public class PicturePlugin extends Plugin {
                         public void onSendFinished(PendingIntent pi, Intent intent,
                                                    int resultCode, String resultData,
                                                    Bundle resultExtras) {
-                            if (resultCode == Activity.RESULT_OK) {
-                                try {
-                                    OutputStream os2 = getContext().getContentResolver()
-                                        .openOutputStream(pendingReplaceUri, "wt");
-                                    if (os2 == null) {
-                                        pendingReplaceCall.reject("Cannot open output stream after permission");
-                                        return;
+                            new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                                @Override
+                                public void run() {
+                                    try {
+                                        OutputStream os2 = getContext().getContentResolver()
+                                            .openOutputStream(pendingReplaceUri, "wt");
+                                        if (os2 == null) {
+                                            pendingReplaceCall.reject("Cannot open output stream after permission");
+                                            return;
+                                        }
+                                        os2.write(pendingReplaceData);
+                                        os2.flush();
+                                        os2.close();
+                                        pendingReplaceCall.resolve();
+                                    } catch (Exception ex) {
+                                        pendingReplaceCall.reject("Replace failed after permission: " + ex.getMessage());
                                     }
-                                    os2.write(pendingReplaceData);
-                                    os2.flush();
-                                    os2.close();
-                                    pendingReplaceCall.resolve();
-                                } catch (Exception ex) {
-                                    pendingReplaceCall.reject("Replace failed after permission: " + ex.getMessage());
                                 }
-                            } else {
-                                pendingReplaceCall.reject("Permission denied");
-                            }
+                            }, 500);
                         }
                     }, new Handler(Looper.getMainLooper()));
             } catch (PendingIntent.CanceledException ex) {
