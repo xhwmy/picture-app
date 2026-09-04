@@ -140,11 +140,18 @@ export function App() {
     const total = pending.length;
     let completed = 0;
     let taskIndex = 0;
+    const stageMap: Record<string, number> = {};
+    const updateProgress = () => {
+      const sum = Object.values(stageMap).reduce((a, b) => a + b, 0);
+      setCompressProgress(Math.round((sum / total) * 100));
+    };
 
     const runWorker = async (worker: Worker) => {
       while (taskIndex < pending.length && !cancelRef.current) {
         const myIndex = taskIndex++;
         const item = pending[myIndex];
+        stageMap[item.id] = 0.05;
+        updateProgress();
         setImages((prev) => prev.map((img) => (img.id === item.id ? { ...img, status: 'processing' } : img)));
         try {
           const buffer = item.data.slice(0);
@@ -161,6 +168,11 @@ export function App() {
             const handler = (e: MessageEvent<WorkerResponse>) => {
               const msg = e.data;
               if (msg.id !== item.id) return;
+              if (msg.type === 'progress') {
+                stageMap[item.id] = msg.stage === 'decoded' ? 0.4 : 0.8;
+                updateProgress();
+                return;
+              }
               worker.removeEventListener('message', handler);
               if (msg.type === 'success') resolve(msg.result);
               else reject(new Error(msg.error));
@@ -169,20 +181,23 @@ export function App() {
             worker.postMessage(request, { transfer: [buffer] });
           });
           if (cancelRef.current) break;
+          stageMap[item.id] = 1;
+          completed++;
+          updateProgress();
           const resultUrl = URL.createObjectURL(new Blob([result.buffer], { type: result.mimeType }));
           setImages((prev) =>
             prev.map((img) => (img.id === item.id ? { ...img, status: 'done', result, resultUrl } : img)),
           );
         } catch (err) {
           if (cancelRef.current) break;
+          stageMap[item.id] = 1;
+          updateProgress();
           setImages((prev) =>
             prev.map((img) =>
               img.id === item.id ? { ...img, status: 'failed', errorReason: err instanceof Error ? err.message : String(err) } : img,
             ),
           );
         }
-        completed++;
-        setCompressProgress(Math.round((completed / total) * 100));
       }
     };
 
@@ -361,12 +376,6 @@ export function App() {
             ))}
           </div>
 
-          {processing && (
-            <div class="progress-bar">
-              <div class="progress-bar__fill" style={`width:${compressProgress}%`}></div>
-              <span class="progress-bar__text">{compressProgress}%</span>
-            </div>
-          )}
 
           <div class="actions">
             {processing ? (
@@ -393,6 +402,24 @@ export function App() {
         style="display:none"
         onChange={(e) => addFromFiles((e.currentTarget as HTMLInputElement).files)}
       />
+
+      {processing && (
+        <div class="progress-modal">
+          <div class="progress-modal__box">
+            <div class="progress-modal__header">
+              <span>压缩中</span>
+              <span class="progress-modal__count">{images.filter((i) => i.status === 'done').length}/{images.filter((i) => i.status !== 'pending' || true).length}</span>
+            </div>
+            <div class="progress-modal__bar">
+              <div class="progress-modal__fill" style={`width:${compressProgress}%`}></div>
+            </div>
+            <div class="progress-modal__info">
+              <span class="progress-modal__percent">{compressProgress}%</span>
+              <button class="progress-modal__cancel" onClick={cancelCompress}>中断</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
