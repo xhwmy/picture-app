@@ -116,7 +116,7 @@ export function App() {
         replaced: false,
       };
     });
-    setImages((prev) => [...prev, ...items]);
+    setImages((prev) => [...prev, ...items.filter((it) => !prev.some((p) => p.id === it.id))]);
   }, []);
 
   const handlePick = useCallback(async () => {
@@ -125,6 +125,7 @@ export function App() {
         const picked = await pickImagesNative();
         if (picked.length > 0) addFromNative(picked);
       } catch (err) {
+        if (err instanceof Error && err.message === 'User cancelled') return;
         alert('选择图片失败: ' + (err instanceof Error ? err.message : String(err)));
       }
     } else {
@@ -224,13 +225,7 @@ export function App() {
 
   const cancelCompress = useCallback(() => {
     cancelRef.current = true;
-    workerPoolRef.current.forEach((w) => w.terminate());
-    const count = Math.min(6, Math.max(2, (navigator.hardwareConcurrency || 4)));
-    const pool: Worker[] = [];
-    for (let i = 0; i < count; i++) {
-      pool.push(new Worker(new URL('./workers/compress.worker.ts', import.meta.url), { type: 'module' }));
-    }
-    workerPoolRef.current = pool;
+
     setImages((prev) => prev.map((img) => img.status === 'processing' ? { ...img, status: 'pending' } : img));
     setProcessing(false);
     setCompressProgress(0);
@@ -337,7 +332,7 @@ export function App() {
         </div>
         {images.length > 0 && (
           <div class="header__right">
-            <span class="header__count">{images.length} 张{doneCount > 0 && ` · 省 ${formatSize(totalSaved)}`}</span>
+            <span class="header__count">{images.length} 张{doneCount > 0 && (totalSaved >= 0 ? ` · 省 ${formatSize(totalSaved)}` : ` · 增 ${formatSize(-totalSaved)}`)}</span>
             <button class="header__clear" onClick={clearImages} disabled={processing}>清空</button>
           </div>
         )}
@@ -466,7 +461,7 @@ export function App() {
         accept="image/*"
         multiple
         style="display:none"
-        onChange={(e) => addFromFiles((e.currentTarget as HTMLInputElement).files)}
+        onChange={(e) => { addFromFiles((e.currentTarget as HTMLInputElement).files); (e.currentTarget as HTMLInputElement).value = ''; }}
       />
 
       {processing && (
