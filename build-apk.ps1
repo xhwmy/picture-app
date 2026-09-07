@@ -1,9 +1,9 @@
 ﻿# build-apk.ps1 — 递增版本号 + 构建 APK
 # 用法: powershell -ExecutionPolicy Bypass -File build-apk.ps1
 # 可传参数: -major 或 -minor 或 -patch（默认 patch）
-#   -patch: 1.0 -> 1.0.1  (默认)
-#   -minor: 1.0 -> 1.1
-#   -major: 1.0 -> 2.0
+#   -patch: 2.0 -> 2.01  (默认，修 Bug，两位小数 +1)
+#   -minor: 2.0 -> 3.0   (功能更新，大版本整数位 +1)
+#   -major: 2.0 -> 3.0   (同 minor，保留兼容)
 
 param(
     [switch]$major,
@@ -18,26 +18,23 @@ $gradleFile = Join-Path $projectDir "android\app\build.gradle"
 # 读取当前版本
 $content = Get-Content $gradleFile -Raw
 if ($content -match 'versionCode\s+(\d+)') { $currentCode = [int]$Matches[1] }
-if ($content -match 'versionName\s+"([^"]+)"') { $currentName = $Matches[1] }
-
-Write-Host "当前版本: v$currentName (code=$currentCode)" -ForegroundColor Cyan
-
-# 解析版本号
-$parts = $currentName.Split('.')
-$vMajor = [int]$parts[0]
-$vMinor = if ($parts.Length -gt 1) { [int]$parts[1] } else { 0 }
-$vPatch = if ($parts.Length -gt 2) { [int]$parts[2] } else { 0 }
-
-# 递增
-if ($major) {
-    $vMajor++; $vMinor = 1; $vPatch = 0
-} elseif ($minor) {
-    $vMinor++; $vPatch = 0
-} else {
-    $vPatch++
+if ($content -match 'versionName\s+"(\d+)\.(\d+)"') {
+    $vMajor = [int]$Matches[1]
+    $vMinor = [int]$Matches[2]
 }
 
-$newName = if ($vPatch -gt 0) { "$vMajor.$vMinor.$vPatch" } else { "$vMajor.$vMinor" }
+Write-Host "当前版本名: $vMajor.$('{0:d2}' -f $vMinor) (code=$currentCode)" -ForegroundColor Cyan
+
+# 递增
+if ($major -or $minor) {
+    $vMajor++
+    $vMinor = 0
+} else {
+    if ($vMinor -ge 9) { $vMajor++; $vMinor = 0 }
+    else { $vMinor++ }
+}
+
+$newName = "$vMajor.$('{0:d2}' -f $vMinor)"
 $newCode = $currentCode + 1
 
 Write-Host "新版本: v$newName (code=$newCode)" -ForegroundColor Green

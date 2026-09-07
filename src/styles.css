@@ -54,8 +54,14 @@ input, select { font-family: inherit; }
   -webkit-background-clip: text; background-clip: text;
   -webkit-text-fill-color: transparent;
 }
-.header__count { font-size: 13px; color: var(--text-dim); }
-.header__count { font-variant-numeric: tabular-nums; }
+.header__count { font-size: 13px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.header__right { display: flex; align-items: center; gap: 12px; }
+.header__clear {
+  font-size: 13px; color: var(--text-dim);
+  padding: 4px 10px; border-radius: 8px;
+  background: var(--surface-strong); border: 1px solid var(--border);
+}
+.header__clear:active { background: rgba(248, 113, 113, 0.15); color: var(--red); }
 
 .picker { padding: 60px 24px; flex: 1; display: flex; align-items: center; }
 .picker__card {
@@ -153,6 +159,17 @@ input, select { font-family: inherit; }
 .status--done { background: rgba(52, 211, 153, 0.1); color: var(--green); border: 1px solid rgba(52, 211, 153, 0.22); }
 .status--failed { background: rgba(248, 113, 113, 0.1); color: var(--red); border: 1px solid rgba(248, 113, 113, 0.25); }
 .image-item__saved { color: var(--green); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.image-item__saved--saved { color: var(--blue); }
+.image-item__fail-reason { font-size: 11px; color: var(--red); margin-top: 3px; text-decoration: underline; }
+.image-item__remove {
+  width: 26px; height: 26px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 8px; font-size: 12px;
+  color: var(--text-faint); background: transparent;
+  align-self: flex-start;
+}
+.image-item__remove:active { color: var(--red); background: rgba(248, 113, 113, 0.12); }
+.image-item__remove:disabled { opacity: 0.3; }
 
 .item-actions { display: flex; flex-direction: column; gap: 5px; }
 .item-actions__btn {

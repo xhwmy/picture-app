@@ -59,16 +59,25 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       postProgress(msg.id, 'decoded');
       postProgress(msg.id, 'encoded');
     } else if (msg.type === 'visuallyLossless') {
-      result = await compressVisuallyLossless(msg.buffer, msg.mimeType, {
-        format: msg.format,
-        quality: msg.quality,
-        maxWidth: msg.maxWidth,
-        maxHeight: msg.maxHeight,
-        resizeMode: msg.resizeMode,
-        perceptualLevel: msg.perceptualLevel,
-      });
-      postProgress(msg.id, 'decoded');
-      postProgress(msg.id, 'encoded');
+      const vlFormat = msg.format === 'auto' ? autoFormatFromInput(detectFormat(msg.mimeType, msg.buffer)) : msg.format;
+      if (vlFormat === 'png') {
+        const decoded = await decodeBuffer(msg.buffer, msg.mimeType);
+        postProgress(msg.id, 'decoded');
+        const encoded = await encodeImage(decoded, msg.format, 100);
+        postProgress(msg.id, 'encoded');
+        result = toCompressOutput(encoded.buffer, encoded.mimeType, encoded.extension, decoded.width, decoded.height, 100, false, msg.buffer.byteLength);
+      } else {
+        result = await compressVisuallyLossless(msg.buffer, msg.mimeType, {
+          format: msg.format,
+          quality: msg.quality,
+          maxWidth: msg.maxWidth,
+          maxHeight: msg.maxHeight,
+          resizeMode: msg.resizeMode,
+          perceptualLevel: msg.perceptualLevel,
+        });
+        postProgress(msg.id, 'decoded');
+        postProgress(msg.id, 'encoded');
+      }
     } else {
       const resolvedFormat = msg.format === 'auto' ? autoFormatFromInput(detectFormat(msg.mimeType, msg.buffer)) : msg.format;
       const fast = await fastEncodeFromBuffer(msg.buffer, msg.mimeType, resolvedFormat as Exclude<typeof resolvedFormat, 'auto'>, msg.quality);

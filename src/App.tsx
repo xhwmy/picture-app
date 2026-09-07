@@ -25,6 +25,7 @@ interface ImageItem {
   result?: CompressOutput;
   resultUrl?: string;
   replaced: boolean;
+  saved?: boolean;
   errorReason?: string;
 }
 
@@ -58,6 +59,7 @@ export function App() {
   const [perceptualLevel, setPerceptualLevel] = useState<PerceptualLevel>('normal');
   const [processing, setProcessing] = useState(false);
   const [compressProgress, setCompressProgress] = useState(0);
+  const [compressStats, setCompressStats] = useState({ done: 0, total: 0 });
   const [replacing, setReplacing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const workerPoolRef = useRef<Worker[]>([]);
@@ -138,6 +140,7 @@ export function App() {
 
     const pending = images.filter((img) => img.status === 'pending' || img.status === 'failed');
     const total = pending.length;
+    setCompressStats({ done: 0, total });
     let completed = 0;
     let taskIndex = 0;
     const stageMap: Record<string, number> = {};
@@ -190,6 +193,7 @@ export function App() {
           if (cancelRef.current) break;
           stageMap[item.id] = 1;
           completed++;
+          setCompressStats({ done: completed, total });
           updateProgress();
           const resultUrl = URL.createObjectURL(new Blob([result.buffer], { type: result.mimeType }));
           setImages((prev) =>
@@ -225,15 +229,16 @@ export function App() {
       pool.push(new Worker(new URL('./workers/compress.worker.ts', import.meta.url), { type: 'module' }));
     }
     workerPoolRef.current = pool;
+    setImages((prev) => prev.map((img) => img.status === 'processing' ? { ...img, status: 'pending' } : img));
+    setProcessing(false);
+    setCompressProgress(0);
   }, []);
 
   const native = isNative();
 
   const replaceOriginal = useCallback(async (item: ImageItem) => {
     if (!item.result) return;
-    if (isNative() && !confirm('替换原图需要授权覆盖写入，接下来系统会弹出授权对话框，请点"允许"')) {
-      return;
-    }
+
     try {
       if (isNative() && item.contentUri) {
         await replaceImageNative(item.contentUri, item.result.buffer, item.result.mimeType);
@@ -290,10 +295,31 @@ export function App() {
       } else {
         downloadBlob(item.result.buffer, item.result.mimeType, 'compressed-' + item.name);
       }
-      setImages((prev) => prev.map((img) => (img.id === item.id ? { ...img, replaced: true } : img)));
+      setImages((prev) => prev.map((img) => (img.id === item.id ? { ...img, saved: true } : img)));
     } catch (err) {
       alert('保存失败: ' + (err instanceof Error ? err.message : String(err)));
     }
+  }, []);
+
+  const removeImage = useCallback((id: string) => {
+    setImages((prev) => {
+      const target = prev.find((img) => img.id === id);
+      if (target) {
+        URL.revokeObjectURL(target.thumbnailUrl);
+        if (target.resultUrl) URL.revokeObjectURL(target.resultUrl);
+      }
+      return prev.filter((img) => img.id !== id);
+    });
+  }, []);
+
+  const clearImages = useCallback(() => {
+    setImages((prev) => {
+      prev.forEach((img) => {
+        URL.revokeObjectURL(img.thumbnailUrl);
+        if (img.resultUrl) URL.revokeObjectURL(img.resultUrl);
+      });
+      return [];
+    });
   }, []);
 
   const doneCount = images.filter((i) => i.status === 'done').length;
@@ -307,7 +333,12 @@ export function App() {
           <span class="header__logo">◈</span>
           <h1>图片压缩</h1>
         </div>
-        {images.length > 0 && <span class="header__count">{images.length} 张{doneCount > 0 && ` · 省 ${formatSize(totalSaved)}`}</span>}
+        {images.length > 0 && (
+          <div class="header__right">
+            <span class="header__count">{images.length} 张{doneCount > 0 && ` · 省 ${formatSize(totalSaved)}`}</span>
+            <button class="header__clear" onClick={clearImages} disabled={processing}>清空</button>
+          </div>
+        )}
       </div>
 
       {images.length === 0 ? (
@@ -363,19 +394,26 @@ export function App() {
           </div>
 
           <div class="image-list">
-            {images.map((item) => (
+            {images.map((item) => {
+              const pct = item.result ? Math.round((1 - item.result.byteLength / item.originalSize) * 100) : 0;
+              return (
               <div class="image-item" key={item.id}>
                 <img class="image-item__thumb" src={item.thumbnailUrl} alt="" />
                 <div class="image-item__info">
                   <div class="image-item__name">{item.name}</div>
                   <div class="image-item__sizes">
                     {formatSize(item.originalSize)}
-                    {item.result && <> <span class="image-item__arrow">→</span> {formatSize(item.result.byteLength)}（省 {Math.round((1 - item.result.byteLength / item.originalSize) * 100)}%）</>}
+                    {item.result && <> <span class="image-item__arrow">→</span> {formatSize(item.result.byteLength)}（{pct >= 0 ? `省 ${pct}%` : `增大 ${-pct}%`}）</>}
                     {item.result && <span class="image-item__sizes"> · Q{item.result.qualityUsed}</span>}
                   </div>
+                  {item.status === 'failed' && item.errorReason && (
+                    <div class="image-item__fail-reason" onClick={() => alert('压缩失败: ' + item.errorReason)}>点击查看失败原因</div>
+                  )}
                 </div>
                 {item.replaced ? (
                   <span class="image-item__saved">✓ 已替换</span>
+                ) : item.saved ? (
+                  <span class="image-item__saved image-item__saved--saved">✓ 已保存</span>
                 ) : item.status === 'done' ? (
                   <div class="item-actions">
                     <button class="item-actions__btn item-actions__btn--primary" onClick={() => replaceOriginal(item)}>{native ? '替换原图' : '下载'}</button>
@@ -386,8 +424,10 @@ export function App() {
                     {item.status === 'pending' ? '待压缩' : item.status === 'processing' ? '压缩中' : '失败'}
                   </span>
                 )}
+                <button class="image-item__remove" onClick={() => removeImage(item.id)} disabled={processing}>✕</button>
               </div>
-            ))}
+              );
+            })}
           </div>
 
 
@@ -421,7 +461,7 @@ export function App() {
           <div class="progress-modal__box">
             <div class="progress-modal__header">
               <span>压缩中</span>
-              <span class="progress-modal__count">{images.filter((i) => i.status === 'done').length}/{images.filter((i) => i.status !== 'pending' || true).length}</span>
+              <span class="progress-modal__count">{compressStats.done}/{compressStats.total}</span>
             </div>
             <div class="progress-modal__bar">
               <div class="progress-modal__fill" style={`width:${compressProgress}%`}></div>
