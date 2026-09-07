@@ -1,6 +1,6 @@
 {
     "name":  "picture-app",
-    "version":  "3.00",
+    "version":  "3.01",
     "private":  true,
     "type":  "module",
     "scripts":  {

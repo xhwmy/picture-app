@@ -82,6 +82,7 @@ export interface WorkerRequest {
   maxHeight?: number;
   resizeMode?: ResizeMode;
   perceptualLevel?: PerceptualLevel;
+  ultraLossy?: boolean;
 }
 
 export type WorkerResponse =

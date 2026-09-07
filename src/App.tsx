@@ -174,6 +174,7 @@ export function App() {
             format: ultraLossy ? 'jpeg' : (format ?? 'auto'),
             quality: ultraLossy ? 1 : quality,
             perceptualLevel: visuallyLossless ? perceptualLevel : undefined,
+            ultraLossy: ultraLossy || undefined,
           };
           const result = await new Promise<CompressOutput>((resolve, reject) => {
             const handler = (e: MessageEvent<WorkerResponse>) => {
