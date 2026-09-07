@@ -56,6 +56,7 @@ export function App() {
   const [format, setFormat] = useState<OutputFormat | null>(null);
   const [quality, setQuality] = useState(75);
   const [visuallyLossless, setVisuallyLossless] = useState(false);
+  const [ultraLossy, setUltraLossy] = useState(false);
   const [perceptualLevel, setPerceptualLevel] = useState<PerceptualLevel>('normal');
   const [processing, setProcessing] = useState(false);
   const [compressProgress, setCompressProgress] = useState(0);
@@ -170,8 +171,8 @@ export function App() {
             id: item.id,
             buffer,
             mimeType: item.mimeType,
-            format: format ?? 'auto',
-            quality,
+            format: ultraLossy ? 'jpeg' : (format ?? 'auto'),
+            quality: ultraLossy ? 1 : quality,
             perceptualLevel: visuallyLossless ? perceptualLevel : undefined,
           };
           const result = await new Promise<CompressOutput>((resolve, reject) => {
@@ -218,7 +219,7 @@ export function App() {
     }
     setProcessing(false);
     setCompressProgress(0);
-  }, [images, format, quality, visuallyLossless, perceptualLevel]);
+  }, [images, format, quality, visuallyLossless, ultraLossy, perceptualLevel]);
 
   const cancelCompress = useCallback(() => {
     cancelRef.current = true;
@@ -369,8 +370,15 @@ export function App() {
               <span class="settings__label">视觉无损</span>
               <button
                 class={`toggle-btn${visuallyLossless ? ' toggle-btn--on' : ''}`}
-                onClick={() => setVisuallyLossless(!visuallyLossless)}
+                onClick={() => { setVisuallyLossless(!visuallyLossless); if (!visuallyLossless) setUltraLossy(false); }}
               >{visuallyLossless ? '开' : '关'}</button>
+            </div>
+            <div class="settings__row">
+              <span class="settings__label">全损压缩 <span class="settings__value settings__value--warn">极低画质</span></span>
+              <button
+                class={`toggle-btn toggle-btn--danger${ultraLossy ? ' toggle-btn--danger-on' : ''}`}
+                onClick={() => { setUltraLossy(!ultraLossy); if (!ultraLossy) setVisuallyLossless(false); }}
+              >{ultraLossy ? '开' : '关'}</button>
             </div>
             {visuallyLossless ? (
               <div class="settings__row">
@@ -383,6 +391,10 @@ export function App() {
                     >{lvl === 'normal' ? '标准' : lvl === 'high' ? '高' : '极致'}</button>
                   ))}
                 </div>
+              </div>
+            ) : ultraLossy ? (
+              <div class="settings__row settings__row--hint">
+                <span class="settings__hint">质量强制 1 + JPEG，体积最小画质极低</span>
               </div>
             ) : (
               <div class="settings__row">
