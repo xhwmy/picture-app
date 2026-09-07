@@ -303,14 +303,22 @@ export function App() {
   return (
     <div class="app">
       <div class="header">
-        <h1>图片压缩</h1>
+        <div class="header__brand">
+          <span class="header__logo">◈</span>
+          <h1>图片压缩</h1>
+        </div>
         {images.length > 0 && <span class="header__count">{images.length} 张{doneCount > 0 && ` · 省 ${formatSize(totalSaved)}`}</span>}
       </div>
 
       {images.length === 0 ? (
         <div class="picker">
-          <button class="picker__btn" onClick={handlePick}>📷 从相册选择图片</button>
-          <p class="picker__hint">支持 JPEG / PNG / WebP / AVIF / HEIC，可多选</p>
+          <div class="picker__card">
+            <div class="picker__icon">✦</div>
+            <h2 class="picker__title">开始压缩图片</h2>
+            <p class="picker__desc">本地压缩，保护隐私，最高支持视觉无损</p>
+            <button class="picker__btn" onClick={handlePick}>📷 从相册选择图片</button>
+            <p class="picker__hint">支持 JPEG / PNG / WebP / AVIF / HEIC，可多选</p>
+          </div>
         </div>
       ) : (
         <>
@@ -329,8 +337,7 @@ export function App() {
             <div class="settings__row">
               <span class="settings__label">视觉无损</span>
               <button
-                class={`segmented__btn${visuallyLossless ? ' segmented__btn--active' : ''}`}
-                style="padding: 6px 16px; border-radius: 6px; background: #161b22;"
+                class={`toggle-btn${visuallyLossless ? ' toggle-btn--on' : ''}`}
                 onClick={() => setVisuallyLossless(!visuallyLossless)}
               >{visuallyLossless ? '开' : '关'}</button>
             </div>
@@ -370,9 +377,9 @@ export function App() {
                 {item.replaced ? (
                   <span class="image-item__saved">✓ 已替换</span>
                 ) : item.status === 'done' ? (
-                  <div style="display:flex;flex-direction:column;gap:4px;">
-                    <button style="font-size:12px;padding:6px 10px;background:#1f6feb;color:#fff;border-radius:6px;" onClick={() => replaceOriginal(item)}>{native ? '替换原图' : '下载'}</button>
-                    <button style="font-size:12px;padding:6px 10px;background:#21262d;color:#e6edf3;border-radius:6px;" onClick={() => saveToGallery(item)}>{native ? '另存' : '下载另存'}</button>
+                  <div class="item-actions">
+                    <button class="item-actions__btn item-actions__btn--primary" onClick={() => replaceOriginal(item)}>{native ? '替换原图' : '下载'}</button>
+                    <button class="item-actions__btn item-actions__btn--ghost" onClick={() => saveToGallery(item)}>{native ? '另存' : '下载另存'}</button>
                   </div>
                 ) : (
                   <span class={`image-item__status status--${item.status}`}>
@@ -386,17 +393,16 @@ export function App() {
 
           <div class="actions">
             {processing ? (
-              <button class="actions__btn" style="background:#da3633;color:#fff;" onClick={cancelCompress}>中断压缩</button>
+              <button class="actions__btn actions__cancel" onClick={cancelCompress}>中断压缩</button>
             ) : (
               <button class="actions__btn actions__compress" disabled={images.every((i) => i.status === 'done')}
                 onClick={compress}>开始压缩</button>
             )}
             {doneCount > 0 && images.some((i) => i.status === 'done' && !i.replaced) && (
-              <button class="actions__btn" disabled={replacing}
-                style="background:#1f6feb;color:#fff;"
+              <button class="actions__btn actions__replace" disabled={replacing}
                 onClick={replaceAll}>{replacing ? '替换中...' : `一键替换（${images.filter((i) => i.status === 'done' && !i.replaced).length}张）`}</button>
             )}
-            <button class="picker__btn" style="padding: 14px 20px;" onClick={handlePick}>+ 添加</button>
+            <button class="actions__btn actions__add" onClick={handlePick}>+ 添加</button>
           </div>
         </>
       )}
