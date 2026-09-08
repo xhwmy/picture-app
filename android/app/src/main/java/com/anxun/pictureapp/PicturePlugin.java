@@ -79,7 +79,9 @@ public class PicturePlugin extends Plugin {
                         public void onSendFinished(PendingIntent pi, Intent intent,
                                                    int resultCode, String resultData,
                                                    Bundle resultExtras) {
-                            pendingBatchCall.resolve();
+                            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                                pendingBatchCall.resolve();
+                            }, 500);
                         }
                     }, new Handler(Looper.getMainLooper()));
             } catch (PendingIntent.CanceledException ex) {
@@ -347,6 +349,11 @@ public class PicturePlugin extends Plugin {
             } catch (PendingIntent.CanceledException ex) {
                 call.reject("Permission request canceled");
             }
+        } catch (SecurityException e) {
+            pendingReplaceCall = call;
+            pendingReplaceUri = uri;
+            pendingReplaceData = data;
+            retryWrite(0);
         } catch (Exception e) {
             call.reject("Replace failed: " + e.getMessage());
         }
@@ -363,7 +370,7 @@ public class PicturePlugin extends Plugin {
     }
 
     private void retryWrite(final int attempt) {
-        if (attempt >= 3) {
+        if (attempt >= 5) {
             pendingReplaceCall.reject("授权后仍无法写入。请到系统设置 → 应用管理 → 图片压缩 → 权限，开启存储权限后重试");
             return;
         }
@@ -373,6 +380,29 @@ public class PicturePlugin extends Plugin {
                 try {
                     writeData(pendingReplaceUri, pendingReplaceData);
                     pendingReplaceCall.resolve();
+                } catch (RecoverableSecurityException e) {
+                    try {
+                        PendingIntent pi;
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            pi = MediaStore.createWriteRequest(
+                                getContext().getContentResolver(),
+                                java.util.Collections.singletonList(pendingReplaceUri)
+                            );
+                        } else {
+                            pi = e.getUserAction().getActionIntent();
+                        }
+                        pi.send(0,
+                            new PendingIntent.OnFinished() {
+                                @Override
+                                public void onSendFinished(PendingIntent pi, Intent intent,
+                                                           int resultCode, String resultData,
+                                                           Bundle resultExtras) {
+                                    retryWrite(attempt + 1);
+                                }
+                            }, new Handler(Looper.getMainLooper()));
+                    } catch (PendingIntent.CanceledException ex) {
+                        pendingReplaceCall.reject("Permission request canceled");
+                    }
                 } catch (Exception ex) {
                     retryWrite(attempt + 1);
                 }

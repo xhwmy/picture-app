@@ -269,6 +269,7 @@ export function App() {
     }
     setReplacing(true);
     let failed = 0;
+    const failedItems: string[] = [];
     for (const item of toReplace) {
       try {
         if (native && item.replaceUri) {
@@ -277,12 +278,13 @@ export function App() {
           downloadBlob(item.result!.buffer, item.result!.mimeType, 'compressed-' + item.name);
         }
         setImages((prev) => prev.map((img) => (img.id === item.id ? { ...img, replaced: true } : img)));
-      } catch {
+      } catch (err) {
         failed++;
+        failedItems.push(`${item.name}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
     setReplacing(false);
-    if (failed > 0) alert(`${toReplace.length - failed} 张替换成功，${failed} 张失败`);
+    if (failed > 0) alert(`${toReplace.length - failed} 张替换成功，${failed} 张失败\n${failedItems.slice(0, 5).join('\n')}`);
   }, [images, native]);
 
   const saveToGallery = useCallback(async (item: ImageItem) => {
