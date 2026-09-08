@@ -3,6 +3,7 @@ import { registerPlugin, Capacitor } from '@capacitor/core';
 export interface PickedImage {
   id: string;
   contentUri: string;
+  replaceUri?: string;
   name: string;
   size: number;
   mimeType: string;
@@ -10,7 +11,7 @@ export interface PickedImage {
 }
 
 export interface ReplaceImageOptions {
-  contentUri: string;
+  replaceUri: string;
   base64: string;
   mimeType: string;
 }
@@ -78,12 +79,12 @@ export async function readImageNative(contentUri: string): Promise<ArrayBuffer> 
 }
 
 export async function replaceImageNative(
-  contentUri: string,
+  replaceUri: string,
   compressedBuffer: ArrayBuffer,
   mimeType: string,
 ): Promise<void> {
   const base64 = arrayBufferToBase64(compressedBuffer);
-  await Picture.replaceImage({ contentUri, base64, mimeType });
+  await Picture.replaceImage({ replaceUri, base64, mimeType });
 }
 
 export async function saveImageNative(

@@ -20,6 +20,7 @@ interface ImageItem {
   mimeType: string;
   thumbnailUrl: string;
   contentUri?: string;
+  replaceUri?: string;
   data?: ArrayBuffer;
   status: 'pending' | 'processing' | 'done' | 'failed';
   result?: CompressOutput;
@@ -112,6 +113,7 @@ export function App() {
         mimeType: p.mimeType,
         thumbnailUrl: URL.createObjectURL(thumbBlob),
         contentUri: p.contentUri,
+        replaceUri: p.replaceUri,
         status: 'pending' as const,
         replaced: false,
       };
@@ -237,8 +239,8 @@ export function App() {
     if (!item.result) return;
 
     try {
-      if (isNative() && item.contentUri) {
-        await replaceImageNative(item.contentUri, item.result.buffer, item.result.mimeType);
+      if (isNative() && item.replaceUri) {
+        await replaceImageNative(item.replaceUri, item.result.buffer, item.result.mimeType);
       } else {
         downloadBlob(item.result.buffer, item.result.mimeType, 'compressed-' + item.name);
       }
@@ -251,7 +253,7 @@ export function App() {
 
   const replaceAll = useCallback(async () => {
     const toReplace = images.filter(
-      (img) => img.status === 'done' && !img.replaced && img.result && (native ? img.contentUri : true),
+      (img) => img.status === 'done' && !img.replaced && img.result && (native ? img.replaceUri : true),
     );
     if (toReplace.length === 0) return;
     if (native) {
@@ -259,7 +261,7 @@ export function App() {
         return;
       }
       try {
-        await requestWritePermissions(toReplace.map((img) => img.contentUri!));
+        await requestWritePermissions(toReplace.map((img) => img.replaceUri!));
       } catch (err) {
         alert('授权失败，无法替换原图: ' + (err instanceof Error ? err.message : String(err)));
         return;
@@ -269,8 +271,8 @@ export function App() {
     let failed = 0;
     for (const item of toReplace) {
       try {
-        if (native && item.contentUri) {
-          await replaceImageNative(item.contentUri, item.result!.buffer, item.result!.mimeType);
+        if (native && item.replaceUri) {
+          await replaceImageNative(item.replaceUri, item.result!.buffer, item.result!.mimeType);
         } else {
           downloadBlob(item.result!.buffer, item.result!.mimeType, 'compressed-' + item.name);
         }

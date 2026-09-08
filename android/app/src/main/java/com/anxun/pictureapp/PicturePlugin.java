@@ -167,7 +167,8 @@ public class PicturePlugin extends Plugin {
 
             JSObject img = new JSObject();
             img.put("id", uri.toString());
-            img.put("contentUri", mediaStoreUri != null ? mediaStoreUri : uri.toString());
+            img.put("contentUri", uri.toString());
+            img.put("replaceUri", mediaStoreUri != null ? mediaStoreUri : uri.toString());
             img.put("name", name);
             img.put("size", size);
             img.put("mimeType", mimeType != null ? mimeType : "image/jpeg");
@@ -305,16 +306,16 @@ public class PicturePlugin extends Plugin {
 
     @PluginMethod
     public void replaceImage(PluginCall call) {
-        String contentUriStr = call.getString("contentUri");
+        String replaceUriStr = call.getString("replaceUri");
         String base64Str = call.getString("base64");
         String mimeType = call.getString("mimeType");
 
-        if (contentUriStr == null || base64Str == null) {
+        if (replaceUriStr == null || base64Str == null) {
             call.reject("Missing required parameters");
             return;
         }
 
-        Uri uri = Uri.parse(contentUriStr);
+        Uri uri = Uri.parse(replaceUriStr);
         byte[] data = Base64.decode(base64Str, Base64.NO_WRAP);
 
         try {
