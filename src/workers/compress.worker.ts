@@ -45,7 +45,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
   try {
     let result: CompressOutput;
 
-    if (isGif(msg.mimeType, msg.buffer) && msg.type === 'compress') {
+    if (isGif(msg.mimeType, msg.buffer) && msg.type === 'compress' && !msg.ultraLossy) {
       result = await compressGifAnimated(msg.buffer, { quality: msg.quality });
       postProgress(msg.id, 'decoded');
       postProgress(msg.id, 'encoded');
@@ -63,7 +63,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       if (vlFormat === 'png') {
         const decoded = await decodeBuffer(msg.buffer, msg.mimeType);
         postProgress(msg.id, 'decoded');
-        const encoded = await encodeImage(decoded, msg.format, 100);
+        const encoded = await encodeImage(decoded, vlFormat, 100);
         postProgress(msg.id, 'encoded');
         result = toCompressOutput(encoded.buffer, encoded.mimeType, encoded.extension, decoded.width, decoded.height, 100, false, msg.buffer.byteLength);
       } else {

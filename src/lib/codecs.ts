@@ -151,7 +151,7 @@ async function decodeHeic(buffer: ArrayBuffer): Promise<DecodedImage> {
     const image = images[0];
     const displayed = await new Promise<{ data: Uint8Array; width: number; height: number }>(
       (resolve, reject) => {
-        image.display((img) => {
+        image.display((img: { data: Uint8Array; width: number; height: number } | null) => {
           if (img && img.data) resolve(img);
           else reject(new CodecError('decode-error', 'HEIC 解码失败'));
         });

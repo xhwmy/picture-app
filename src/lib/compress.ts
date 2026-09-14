@@ -112,7 +112,7 @@ export async function compressGifAnimated(
     }
 
     let palette: number[][];
-    let indices: number[];
+    let indices: Uint8Array;
     let transparentIndex: number | undefined;
 
     if (hasTransparent) {

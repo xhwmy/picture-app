@@ -196,9 +196,9 @@ public class PicturePlugin extends Plugin {
         try {
             android.graphics.BitmapFactory.Options opts = new android.graphics.BitmapFactory.Options();
             opts.inJustDecodeBounds = true;
-            InputStream is = resolver.openInputStream(uri);
-            android.graphics.BitmapFactory.decodeStream(is, null, opts);
-            is.close();
+            try (InputStream is = resolver.openInputStream(uri)) {
+                android.graphics.BitmapFactory.decodeStream(is, null, opts);
+            }
 
             int sampleSize = 1;
             while (opts.outWidth / sampleSize > 200 || opts.outHeight / sampleSize > 200) {
@@ -207,9 +207,10 @@ public class PicturePlugin extends Plugin {
 
             opts.inJustDecodeBounds = false;
             opts.inSampleSize = sampleSize;
-            is = resolver.openInputStream(uri);
-            android.graphics.Bitmap bmp = android.graphics.BitmapFactory.decodeStream(is, null, opts);
-            is.close();
+            android.graphics.Bitmap bmp;
+            try (InputStream is = resolver.openInputStream(uri)) {
+                bmp = android.graphics.BitmapFactory.decodeStream(is, null, opts);
+            }
             if (bmp == null) return "";
 
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -230,14 +231,14 @@ public class PicturePlugin extends Plugin {
         }
         try {
             Uri uri = Uri.parse(contentUriStr);
-            InputStream is = getContext().getContentResolver().openInputStream(uri);
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             byte[] buffer = new byte[8192];
             int len;
-            while ((len = is.read(buffer)) != -1) {
-                baos.write(buffer, 0, len);
+            try (InputStream is = getContext().getContentResolver().openInputStream(uri)) {
+                while ((len = is.read(buffer)) != -1) {
+                    baos.write(buffer, 0, len);
+                }
             }
-            is.close();
             String base64 = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP);
             JSObject ret = new JSObject();
             ret.put("base64", base64);

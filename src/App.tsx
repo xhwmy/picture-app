@@ -138,12 +138,13 @@ export function App() {
   const compress = useCallback(async () => {
     const pool = workerPoolRef.current;
     if (pool.length === 0 || images.length === 0) return;
+    const pending = images.filter((img) => img.status === 'pending' || img.status === 'failed');
+    if (pending.length === 0) return;
+    const total = pending.length;
     setProcessing(true);
     setCompressProgress(0);
     cancelRef.current = false;
 
-    const pending = images.filter((img) => img.status === 'pending' || img.status === 'failed');
-    const total = pending.length;
     setCompressStats({ done: 0, total });
     let completed = 0;
     let taskIndex = 0;
