@@ -8,6 +8,9 @@ export interface PickedImage {
   size: number;
   mimeType: string;
   thumbnailBase64: string;
+  dateTaken?: number;
+  dateAdded?: number;
+  dateModified?: number;
 }
 
 export interface ReplaceImageOptions {
@@ -20,6 +23,9 @@ export interface SaveImageOptions {
   base64: string;
   mimeType: string;
   displayName: string;
+  dateTaken?: number;
+  dateAdded?: number;
+  dateModified?: number;
 }
 
 export interface PicturePlugin {
@@ -91,9 +97,10 @@ export async function saveImageNative(
   compressedBuffer: ArrayBuffer,
   mimeType: string,
   displayName: string,
+  dates?: { dateTaken?: number; dateAdded?: number; dateModified?: number },
 ): Promise<void> {
   const base64 = arrayBufferToBase64(compressedBuffer);
-  await Picture.saveImage({ base64, mimeType, displayName });
+  await Picture.saveImage({ base64, mimeType, displayName, ...dates });
 }
 
 export function downloadBlob(buffer: ArrayBuffer, mimeType: string, filename: string): void {

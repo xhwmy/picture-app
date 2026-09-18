@@ -21,6 +21,9 @@ interface ImageItem {
   thumbnailUrl: string;
   contentUri?: string;
   replaceUri?: string;
+  dateTaken?: number;
+  dateAdded?: number;
+  dateModified?: number;
   data?: ArrayBuffer;
   status: 'pending' | 'processing' | 'done' | 'failed';
   result?: CompressOutput;
@@ -114,6 +117,9 @@ export function App() {
         thumbnailUrl: URL.createObjectURL(thumbBlob),
         contentUri: p.contentUri,
         replaceUri: p.replaceUri,
+        dateTaken: p.dateTaken,
+        dateAdded: p.dateAdded,
+        dateModified: p.dateModified,
         status: 'pending' as const,
         replaced: false,
       };
@@ -293,7 +299,11 @@ export function App() {
     try {
       if (isNative()) {
         const displayName = 'compressed-' + item.name.replace(/\.[^.]+$/, '') + '.' + extFromMime(item.result.mimeType);
-        await saveImageNative(item.result.buffer, item.result.mimeType, displayName);
+        await saveImageNative(item.result.buffer, item.result.mimeType, displayName, {
+          dateTaken: item.dateTaken,
+          dateAdded: item.dateAdded,
+          dateModified: item.dateModified,
+        });
       } else {
         downloadBlob(item.result.buffer, item.result.mimeType, 'compressed-' + item.name);
       }

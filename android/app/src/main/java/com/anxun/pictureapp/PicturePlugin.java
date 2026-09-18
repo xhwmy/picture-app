@@ -166,6 +166,7 @@ public class PicturePlugin extends Plugin {
             String mediaStoreUri = findMediaStoreUri(uri, name, (int) size);
 
             String thumbBase64 = generateThumbnailBase64(uri, resolver);
+            long[] dates = queryMediaDates(mediaStoreUri);
 
             JSObject img = new JSObject();
             img.put("id", uri.toString());
@@ -175,6 +176,11 @@ public class PicturePlugin extends Plugin {
             img.put("size", size);
             img.put("mimeType", mimeType != null ? mimeType : "image/jpeg");
             img.put("thumbnailBase64", thumbBase64);
+            if (dates != null) {
+                img.put("dateTaken", dates[0]);
+                img.put("dateAdded", dates[1]);
+                img.put("dateModified", dates[2]);
+            }
             return img;
         } catch (Exception e) {
             return null;
@@ -307,6 +313,33 @@ public class PicturePlugin extends Plugin {
         return null;
     }
 
+    private long[] queryMediaDates(String mediaStoreUriStr) {
+        if (mediaStoreUriStr == null) return null;
+        try {
+            Uri mediaUri = Uri.parse(mediaStoreUriStr);
+            String[] projection = {
+                MediaStore.Images.Media.DATE_TAKEN,
+                MediaStore.Images.Media.DATE_ADDED,
+                MediaStore.Images.Media.DATE_MODIFIED
+            };
+            try (Cursor cursor = getContext().getContentResolver().query(
+                mediaUri, projection, null, null, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    long[] dates = new long[3];
+                    int tIdx = cursor.getColumnIndex(MediaStore.Images.Media.DATE_TAKEN);
+                    int aIdx = cursor.getColumnIndex(MediaStore.Images.Media.DATE_ADDED);
+                    int mIdx = cursor.getColumnIndex(MediaStore.Images.Media.DATE_MODIFIED);
+                    dates[0] = tIdx >= 0 ? cursor.getLong(tIdx) : 0;
+                    dates[1] = aIdx >= 0 ? cursor.getLong(aIdx) : 0;
+                    dates[2] = mIdx >= 0 ? cursor.getLong(mIdx) : 0;
+                    return dates;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
     @PluginMethod
     public void replaceImage(PluginCall call) {
         String replaceUriStr = call.getString("replaceUri");
@@ -416,6 +449,9 @@ public class PicturePlugin extends Plugin {
         String base64Str = call.getString("base64");
         String mimeType = call.getString("mimeType");
         String displayName = call.getString("displayName");
+        long dateTaken = call.getLong("dateTaken", 0L);
+        long dateAdded = call.getLong("dateAdded", 0L);
+        long dateModified = call.getLong("dateModified", 0L);
 
         if (base64Str == null || mimeType == null || displayName == null) {
             call.reject("Missing required parameters");
@@ -424,10 +460,14 @@ public class PicturePlugin extends Plugin {
 
         try {
             byte[] data = Base64.decode(base64Str, Base64.NO_WRAP);
+            data = injectExifDates(data, mimeType, dateTaken);
 
             ContentValues values = new ContentValues();
             values.put(MediaStore.Images.Media.DISPLAY_NAME, displayName);
             values.put(MediaStore.Images.Media.MIME_TYPE, mimeType);
+            if (dateTaken > 0) values.put(MediaStore.Images.Media.DATE_TAKEN, dateTaken);
+            if (dateAdded > 0) values.put(MediaStore.Images.Media.DATE_ADDED, dateAdded);
+            if (dateModified > 0) values.put(MediaStore.Images.Media.DATE_MODIFIED, dateModified);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 values.put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/PictureCompress");
                 values.put(MediaStore.Images.Media.IS_PENDING, 1);
@@ -453,12 +493,50 @@ public class PicturePlugin extends Plugin {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 ContentValues updateValues = new ContentValues();
                 updateValues.put(MediaStore.Images.Media.IS_PENDING, 0);
+                if (dateAdded > 0) updateValues.put(MediaStore.Images.Media.DATE_ADDED, dateAdded);
+                if (dateModified > 0) updateValues.put(MediaStore.Images.Media.DATE_MODIFIED, dateModified);
+                if (dateTaken > 0) updateValues.put(MediaStore.Images.Media.DATE_TAKEN, dateTaken);
                 getContext().getContentResolver().update(uri, updateValues, null, null);
             }
 
             call.resolve();
         } catch (Exception e) {
             call.reject("Save failed: " + e.getMessage());
+        }
+    }
+
+    private byte[] injectExifDates(byte[] data, String mimeType, long dateTaken) {
+        if (dateTaken <= 0) return data;
+        if (!"image/jpeg".equals(mimeType)) return data;
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return data;
+        java.io.File tmp = null;
+        try {
+            tmp = java.io.File.createTempFile("exif_", ".jpg", getContext().getCacheDir());
+            try (java.io.FileOutputStream fos = new java.io.FileOutputStream(tmp)) {
+                fos.write(data);
+            }
+            android.media.ExifInterface exif = new android.media.ExifInterface(tmp.getAbsolutePath());
+            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat(
+                "yyyy:MM:dd HH:mm:ss", java.util.Locale.US);
+            String dateTime = sdf.format(new java.util.Date(dateTaken));
+            exif.setAttribute(android.media.ExifInterface.TAG_DATETIME_ORIGINAL, dateTime);
+            exif.setAttribute(android.media.ExifInterface.TAG_DATETIME_DIGITIZED, dateTime);
+            exif.setAttribute(android.media.ExifInterface.TAG_DATETIME, dateTime);
+            exif.saveAttributes();
+            byte[] out = new byte[(int) tmp.length()];
+            try (java.io.FileInputStream fis = new java.io.FileInputStream(tmp)) {
+                int off = 0;
+                while (off < out.length) {
+                    int r = fis.read(out, off, out.length - off);
+                    if (r < 0) break;
+                    off += r;
+                }
+            }
+            return out;
+        } catch (Exception ignored) {
+            return data;
+        } finally {
+            if (tmp != null) tmp.delete();
         }
     }
 }
