@@ -66,9 +66,24 @@ export function App() {
   const [compressProgress, setCompressProgress] = useState(0);
   const [compressStats, setCompressStats] = useState({ done: 0, total: 0 });
   const [replacing, setReplacing] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewScale, setPreviewScale] = useState(1);
+  const [previewX, setPreviewX] = useState(0);
+  const [previewY, setPreviewY] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const workerPoolRef = useRef<Worker[]>([]);
   const cancelRef = useRef(false);
+  const gestureRef = useRef({
+    mode: 'idle' as 'idle' | 'tap' | 'pinch',
+    startDist: 0,
+    startScale: 1,
+    startX: 0,
+    startY: 0,
+    startXOffset: 0,
+    startYOffset: 0,
+    moved: false,
+    lastTap: 0,
+  });
 
   useEffect(() => {
     const count = Math.min(6, Math.max(2, (navigator.hardwareConcurrency || 4)));
@@ -334,6 +349,83 @@ export function App() {
     });
   }, []);
 
+  const openPreview = useCallback((url: string) => {
+    setPreviewUrl(url);
+    setPreviewScale(1);
+    setPreviewX(0);
+    setPreviewY(0);
+    gestureRef.current.lastTap = 0;
+  }, []);
+
+  const closePreview = useCallback(() => {
+    setPreviewUrl(null);
+    setPreviewScale(1);
+    setPreviewX(0);
+    setPreviewY(0);
+  }, []);
+
+  const onPreviewTouchStart = (e: TouchEvent) => {
+    const g = gestureRef.current;
+    const t = e.touches;
+    if (t.length === 2) {
+      g.mode = 'pinch';
+      g.startDist = Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+      g.startScale = previewScale;
+    } else if (t.length === 1) {
+      g.mode = 'tap';
+      g.startX = t[0].clientX;
+      g.startY = t[0].clientY;
+      g.startXOffset = previewX;
+      g.startYOffset = previewY;
+      g.moved = false;
+    }
+  };
+
+  const onPreviewTouchMove = (e: TouchEvent) => {
+    const g = gestureRef.current;
+    const t = e.touches;
+    if (g.mode === 'pinch' && t.length === 2 && g.startDist > 0) {
+      const dist = Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+      let ns = g.startScale * (dist / g.startDist);
+      ns = Math.min(5, Math.max(1, ns));
+      setPreviewScale(ns);
+      if (ns <= 1) { setPreviewX(0); setPreviewY(0); }
+    } else if (g.mode === 'tap' && t.length === 1) {
+      const dx = t[0].clientX - g.startX;
+      const dy = t[0].clientY - g.startY;
+      if (Math.hypot(dx, dy) > 8) g.moved = true;
+      if (g.moved && previewScale > 1) {
+        setPreviewX(g.startXOffset + dx);
+        setPreviewY(g.startYOffset + dy);
+      }
+    }
+  };
+
+  const onPreviewTouchEnd = (e: TouchEvent) => {
+    const g = gestureRef.current;
+    if (g.mode === 'tap' && !g.moved && e.changedTouches.length === 1) {
+      const now = Date.now();
+      if (now - g.lastTap < 300) {
+        const ns = previewScale > 1 ? 1 : 2.5;
+        setPreviewScale(ns);
+        if (ns === 1) { setPreviewX(0); setPreviewY(0); }
+        g.lastTap = 0;
+      } else {
+        g.lastTap = now;
+      }
+    }
+    if (e.touches.length === 1) {
+      g.mode = 'tap';
+      g.startX = e.touches[0].clientX;
+      g.startY = e.touches[0].clientY;
+      g.startXOffset = previewX;
+      g.startYOffset = previewY;
+      g.moved = true;
+    } else if (e.touches.length === 0) {
+      g.mode = 'idle';
+    }
+  };
+
   const doneCount = images.filter((i) => i.status === 'done').length;
   const totalSaved = images.reduce((sum, i) => sum + (i.result ? i.originalSize - i.result.byteLength : 0), 0);
 
@@ -421,7 +513,12 @@ export function App() {
               const pct = item.result ? Math.round((1 - item.result.byteLength / item.originalSize) * 100) : 0;
               return (
               <div class="image-item" key={item.id}>
-                <img class="image-item__thumb" src={item.thumbnailUrl} alt="" />
+                <img
+                  class={`image-item__thumb${item.resultUrl ? ' image-item__thumb--viewable' : ''}`}
+                  src={item.resultUrl || item.thumbnailUrl}
+                  alt=""
+                  onClick={item.resultUrl ? () => openPreview(item.resultUrl!) : undefined}
+                />
                 <div class="image-item__info">
                   <div class="image-item__name">{item.name}</div>
                   <div class="image-item__sizes">
@@ -494,6 +591,22 @@ export function App() {
               <button class="progress-modal__cancel" onClick={cancelCompress}>中断</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {previewUrl && (
+        <div class="preview-overlay" onClick={closePreview}>
+          <img
+            class="preview-overlay__img"
+            src={previewUrl}
+            style={`transform: translate(${previewX}px, ${previewY}px) scale(${previewScale})`}
+            onTouchStart={onPreviewTouchStart}
+            onTouchMove={onPreviewTouchMove}
+            onTouchEnd={onPreviewTouchEnd}
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button class="preview-overlay__close" onClick={closePreview}>✕</button>
+          <span class="preview-overlay__hint">双击放大 · 双指缩放 · 点击空白关闭</span>
         </div>
       )}
     </div>
